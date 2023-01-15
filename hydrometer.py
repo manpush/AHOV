@@ -1,7 +1,5 @@
 import datetime
 import datetime as dt
-import math
-import geopy.distance
 from geopy.distance import *
 from numpy import *
 import plotly.express as px
