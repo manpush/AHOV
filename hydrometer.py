@@ -1,5 +1,7 @@
 import datetime
 import datetime as dt
+import re
+
 from geopy.distance import *
 from numpy import *
 import plotly.express as px
@@ -61,7 +63,7 @@ class event_of_problem:  # объект аварии
         self.agents_params = np.recfromcsv(agents_params_csv_file_path, delimiter=';')  # csv с параметрами разных АХОВ
         self.depth_of_possible_infection_zone_params = np.recfromcsv(depth_of_possible_infection_zone_csv_file_path,
                                                                      delimiter=';')  # csv с параметрами возможной глубины поражения
-        self.type_agent = type_agent  # индекс исследуемого АХОВ
+        self.type_agent = type_agent  # индекс исследуемого АХОВ (не используется)
         self.mass_active = mass_active  # масса выброшеных ахов
         self.time_of_start = time_of_start  # Время проишествия
 
@@ -318,40 +320,87 @@ hdc = hydrometer_data_calculate(
 
     ]
 )
-# создание объекта аварии
-ep = event_of_problem(55.871917, 48.986879, 4, 1000, datetime.datetime(hour=0, year=1, month=1, day=1), 'nir/coeff_set.csv',
-                      'nir/depth_wind.csv')
-# создание массива для отображения метеостанций на карте (красные точки)
-hdcres = np.array(())
-for i in hdc.data:
-    hdcres = np.append(hdcres, (i.CoordinatesXY[0], i.CoordinatesXY[1], i.wind_strong))
-hdcres = np.reshape(hdcres, (-1, 3))
+def start():
+    # создание объекта аварии
+    ep = event_of_problem(55.871917, 48.986879, 4, 1000, datetime.datetime(hour=0, year=1, month=1, day=1),
+                          'nir/coeff_set.csv',
+                          'nir/depth_wind.csv')
+    # создание массива для отображения метеостанций на карте (красные точки)
+    hdcres = np.array(())
+    for i in hdc.data:
+        hdcres = np.append(hdcres, (i.CoordinatesXY[0], i.CoordinatesXY[1], i.wind_strong))
+    hdcres = np.reshape(hdcres, (-1, 3))
 
-# отметить на карте метеоточки
-fig = px.scatter_mapbox(lat=[x[0] for x in hdcres],
-                        lon=[x[1] for x in hdcres],
-                        color_discrete_sequence=["red"], height=700)
-res = ep.get_traps(hdc, datetime.datetime(hour=2, year=1, month=1, day=1), 0, 0,
-                                         ep.mass_active, [])
-fig.update_layout(
-    mapbox = {
-        'style': "open-street-map",
-        'zoom': 12, 'layers': [{
-            'source': {
-                'type': "FeatureCollection",
-                'features': [{
-                    'type': "Feature",
-                    'geometry': {
-                        'type': "MultiPolygon",
-                        'coordinates': [[
-                            i
-                        ]]
-                    }
-                } for i in res]
-            },
-            'type': "fill", 'below': "traces", 'color': "yellow"}]},
-    margin = {'l':0, 'r':0, 'b':0, 't':0})
+    # отметить на карте метеоточки
+    fig = px.scatter_mapbox(lat=[x[0] for x in hdcres],
+                            lon=[x[1] for x in hdcres],
+                            color_discrete_sequence=["red"], height=700)
+    res = ep.get_traps(hdc, datetime.datetime(hour=2, year=1, month=1, day=1), 0, 0,
+                       ep.mass_active, [])
+    fig.update_layout(
+        mapbox={
+            'style': "open-street-map",
+            'zoom': 12, 'layers': [{
+                'source': {
+                    'type': "FeatureCollection",
+                    'features': [{
+                        'type': "Feature",
+                        'geometry': {
+                            'type': "MultiPolygon",
+                            'coordinates': [[
+                                i
+                            ]]
+                        }
+                    } for i in res]
+                },
+                'type': "fill", 'below': "traces", 'color': "yellow"}]},
+        margin={'l': 0, 'r': 0, 'b': 0, 't': 0})
+
+    fig.show()
+def is_valid_float(newval):
+    return re.match("^(\d{1,3}(,\d*)?)?$", newval) is not None
+
+def is_valid_int(newval):
+    return re.match("^\d*$", newval) is not None
+
+def is_valid_time(newval):
+    return re.match("^\d{0, 2}$", newval) is not None
+
+from tkinter import *
+from tkcalendar import DateEntry
+
+window = Tk()
+window.title("Параметры проишествия")
+window.geometry('400x250')
+
+check_float = (window.register(is_valid_float), "%P")
+check_int = (window.register(is_valid_int), "%P")
+check_time = (window.register(is_valid_time), "%P")
+
+Label(window, text="Координаты аварии").grid(column=0, row=0)
+latTk = Entry(window, validate="key", validatecommand=check_float)
+latTk.grid(column=1, row=0)
+lonTk = Entry(window, validate="key", validatecommand=check_float)
+lonTk.grid(column=2, row=0)
+
+Label(window, text="Масса выброшенного вещества").grid(column=0, row=1)
+massTk = Entry(window, validate="key", validatecommand=check_int)
+massTk.grid(column=1, row=1)
+
+Label(window, text='Дата начала проишествия.').grid(column=0, row=2)
+cal = DateEntry(window, width=12, background='darkblue',
+                foreground='white', borderwidth=2)
+cal.grid(column=1, row=2)
+
+Label(window, text='Время начала проишествия.').grid(column=0, row=3)
+timeHEntry = Entry(window, validate="key", validatecommand=check_time)
+timeHEntry.grid(column=1, row=3)
+timeMEntry = Entry(window, validate="key", validatecommand=check_time)
+timeMEntry.grid(column=2, row=3)
 
 
 
-fig.show()
+
+Button(window, text="Построить", command=start).grid(column=0, row=10)
+window.mainloop()
+
