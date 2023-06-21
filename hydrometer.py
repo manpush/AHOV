@@ -42,8 +42,10 @@ class hydrometer_data:
 
 
 class hydrometer_data_calculate:
-    def __init__(self, data):
-        self.data = data
+    def __init__(self, data_array):
+        self.data=[]
+        for i in data_array:
+            self.data.append(hydrometer_data([i[0], i[1]], i[2], i[3]))
 
     def get_point_from_data(self, x, y):
         knn = KNeighborsRegressor(n_neighbors=5, weights='distance')
@@ -78,10 +80,7 @@ class event_of_problem:  # объект аварии
     def get_SVU(self, time, type_of_weather, wind_speed):
         # time - обычное время, нужно для определения ночь/утро/день/вечер
         # type_of_weather - тип погоды: 0 - ясно или переменная обл, 1 - сплошная обл
-        if (dt.datetime(hour=0, year=1, month=1, day=1) <= time < dt.datetime(hour=11, year=1, month=1, day=1)) \
-                or (
-                dt.datetime(hour=19, year=1, month=1, day=1) <= time < dt.datetime(hour=23, minute=59, year=1, month=1,
-                                                                                   day=1)):
+        if dt.time(hour=0) <= time.time() < dt.time(hour=11) or dt.time(hour=19) <= time.time() < dt.time(hour=23, minute=59):
             if type_of_weather == 0:
                 if wind_speed > 4:
                     return self.SVU_dict['Изометрия']
@@ -89,7 +88,7 @@ class event_of_problem:  # объект аварии
                     return self.SVU_dict['Инверсия']
             elif type_of_weather == 1:
                 return self.SVU_dict['Изометрия']
-        elif dt.time(hour=11) <= time < dt.time(hour=19):
+        elif dt.time(hour=11) <= time.time() < dt.time(hour=19):
             if type_of_weather == 0:
                 if wind_speed < 2:
                     return self.SVU_dict['Конвекция']
@@ -197,7 +196,7 @@ class event_of_problem:  # объект аварии
 
         return (lat2, lot2, r2, resarr)  # [[t1x, t1y],[t2x, t2y],[t4x, t4y],[t3x, t3y]]#
 
-    def get_traps(self, hdc, time, radius_of_first_cloud, type_of_weater, mass_active, start_data, lat=None, lot=None):
+    def get_traps(self, hdc, time, radius_of_first_cloud, type_of_weater, mass_active, start_data, lat=None, lot=None, time_cursor=None):
         """
         массив массивов точек облаков глубиной 1км и менее
         :param lat:
@@ -211,13 +210,14 @@ class event_of_problem:  # объект аварии
         """
         if lat is None: lat = self.lat
         if lot is None: lot = self.lon
+        if time_cursor is None: time_cursor = self.time_of_start
 
         wind = hdc.get_point_from_data(lat, lot)  # скорость ветра в конкретной точке
         if radius_of_first_cloud == 0:
             radius_of_first_cloud = 1
         # вычисляем глубину распространения
         Gv = get_Gv(mass_active, wind.wind_strong, self.depth_of_possible_infection_zone_params)
-        Gp = (time - self.time_of_start).seconds / 3600 * self.get_SVU(time, type_of_weater, wind.wind_strong)[2](
+        Gp = (time - self.time_of_start).total_seconds() / 3600 * self.get_SVU(time_cursor, type_of_weater, wind.wind_strong)[2](
             wind.wind_strong)
         if Gv < Gp:
             G = Gv
@@ -244,9 +244,9 @@ class event_of_problem:  # объект аварии
         else:
             # если есть продолжение то продолжаем с учётом осевшего вещества и прошедшего времени
             mass_active = mass_active - mass_active / min(Gv, Gp)
-            time_on_G = G / self.get_SVU(time, type_of_weater, wind.wind_strong)[2](wind.wind_strong)
-            return self.get_traps(hdc, time - datetime.timedelta(minutes=int(time_on_G * 60)),
-                           radius_of_first_cloud, type_of_weater, mass_active, start_data,lat, lot)
+            time_on_G = G / self.get_SVU(time_cursor, type_of_weater, wind.wind_strong)[2](wind.wind_strong)
+            return self.get_traps(hdc, time,
+                           radius_of_first_cloud, type_of_weater, mass_active, start_data,lat, lot, time_cursor+dt.timedelta(minutes=int(time_on_G*60)))
 
 
 def Fzone(n):
@@ -306,23 +306,12 @@ def get_dots(f1, f2, o1, o2, start_angles):
 
 # от сюда начинается основной код
 # создание массива метеовышек (широта долгота, проекция скорости ветра по х, проекция по у)
-hdc = hydrometer_data_calculate(
-    [
-        hydrometer_data([54.8, 47.9], 1, 1),
-        hydrometer_data([55.8, 47.9], 1, 0),
-        hydrometer_data([56.8, 47.9], 0, 1),
-        hydrometer_data([54.8, 48.9], 0, -1),
-        hydrometer_data([55.8, 48.9], -1, -1),
-        hydrometer_data([56.8, 48.9], 0, 1),
-        hydrometer_data([54.8, 49.9], 1, -1),
-        hydrometer_data([55.8, 49.9], -1, 0),
-        hydrometer_data([56.8, 49.9], -1, 0),
-
-    ]
-)
+hdc = hydrometer_data_calculate(np.recfromcsv("nir/hydrometer_dataset.csv", delimiter=';'))
 def start():
     # создание объекта аварии
-    ep = event_of_problem(55.871917, 48.986879, 4, 1000, datetime.datetime(hour=0, year=1, month=1, day=1),
+    eventDateTime = datetime.datetime(hour=int(timeHEntry.get()), year=cal.get_date().year, month=cal.get_date().month, day=cal.get_date().day)
+    ep = event_of_problem(double(latTk.get()), double(lonTk.get()), 4, double(massTk.get()),
+                          eventDateTime,
                           'nir/coeff_set.csv',
                           'nir/depth_wind.csv')
     # создание массива для отображения метеостанций на карте (красные точки)
@@ -335,7 +324,7 @@ def start():
     fig = px.scatter_mapbox(lat=[x[0] for x in hdcres],
                             lon=[x[1] for x in hdcres],
                             color_discrete_sequence=["red"], height=700)
-    res = ep.get_traps(hdc, datetime.datetime(hour=2, year=1, month=1, day=1), 0, 0,
+    res = ep.get_traps(hdc, eventDateTime + dt.timedelta(hours=int(future.get())), 0, 0,
                        ep.mass_active, [])
     fig.update_layout(
         mapbox={
@@ -358,20 +347,20 @@ def start():
 
     fig.show()
 def is_valid_float(newval):
-    return re.match("^(\d{1,3}(,\d*)?)?$", newval) is not None
+    return re.match("^(\d{1,3}(\.\d*)?)?$", newval) is not None
 
 def is_valid_int(newval):
     return re.match("^\d*$", newval) is not None
 
 def is_valid_time(newval):
-    return re.match("^\d{0, 2}$", newval) is not None
+    return re.match("^\d{0,2}$", newval) is not None
 
 from tkinter import *
 from tkcalendar import DateEntry
 
 window = Tk()
 window.title("Параметры проишествия")
-window.geometry('400x250')
+window.geometry('500x250')
 
 check_float = (window.register(is_valid_float), "%P")
 check_int = (window.register(is_valid_int), "%P")
@@ -379,24 +368,32 @@ check_time = (window.register(is_valid_time), "%P")
 
 Label(window, text="Координаты аварии").grid(column=0, row=0)
 latTk = Entry(window, validate="key", validatecommand=check_float)
+latTk.insert(0, "55.871917")
 latTk.grid(column=1, row=0)
 lonTk = Entry(window, validate="key", validatecommand=check_float)
+lonTk.insert(0, "48.986879")
 lonTk.grid(column=2, row=0)
 
 Label(window, text="Масса выброшенного вещества").grid(column=0, row=1)
 massTk = Entry(window, validate="key", validatecommand=check_int)
+massTk.insert(0, "100")
 massTk.grid(column=1, row=1)
 
 Label(window, text='Дата начала проишествия.').grid(column=0, row=2)
-cal = DateEntry(window, width=12, background='darkblue',
+cal = DateEntry(window, width=12, background='darkblue',date_pattern='dd.MM.yyyy',
                 foreground='white', borderwidth=2)
 cal.grid(column=1, row=2)
 
 Label(window, text='Время начала проишествия.').grid(column=0, row=3)
 timeHEntry = Entry(window, validate="key", validatecommand=check_time)
+timeHEntry.insert(0, str(datetime.datetime.now().hour))
 timeHEntry.grid(column=1, row=3)
 timeMEntry = Entry(window, validate="key", validatecommand=check_time)
-timeMEntry.grid(column=2, row=3)
+
+Label(window, text='Прогноз на n часов после проишествия').grid(column=0, row=4)
+future = Scale(window, from_=0, to=48, orient=HORIZONTAL)
+future.set(24)
+future.grid(column=1, row=4)
 
 
 
