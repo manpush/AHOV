@@ -326,6 +326,11 @@ def start():
                             color_discrete_sequence=["red"], height=700)
     res = ep.get_traps(hdc, eventDateTime + dt.timedelta(hours=int(future.get())), 0, 0,
                        ep.mass_active, [])
+    if chkbtnvar.get()==1:
+        import json
+        with open('data.json', 'w') as json_file:
+            json.dump(res, json_file)
+
     fig.update_layout(
         mapbox={
             'style': "open-street-map",
@@ -395,7 +400,10 @@ future = Scale(window, from_=0, to=48, orient=HORIZONTAL)
 future.set(24)
 future.grid(column=1, row=4)
 
-
+chkbtnvar = IntVar()
+chkbtnvar.set(1)
+chkbtn = Checkbutton(window, text="Записать в файл", variable=chkbtnvar, )
+chkbtn.grid(column=1, row=5)
 
 
 Button(window, text="Построить", command=start).grid(column=0, row=10)
